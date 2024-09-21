@@ -37,7 +37,7 @@ const getTotalSpent = async () => {
 
 function App() {
 
-  const {data , isPending} = useQuery({
+  const {data , isPending , error} = useQuery({
     queryKey: ["get-total-spent"],
     queryFn: getTotalSpent
   })
@@ -47,7 +47,7 @@ function App() {
 
 
   return (
-    <div className=" w-[100vw] h-[100vh] flex flex-col items-center justify-center">
+    <div className=" w-[calc(100vw - 1rem)] h-[100vh] flex flex-col items-center justify-center">
       <div>
         <Card>
           <CardHeader>
@@ -55,7 +55,10 @@ function App() {
             <CardDescription>The total amount you've spent</CardDescription>
           </CardHeader>
           <CardContent>
-            <p>{isPending? <MoonLoader color="#FFFFFF" /> : data?.total} </p>
+            
+            <p>{isPending? <MoonLoader color="#FFFFFF" size={10} /> : error? "Request Failed!" : data.total} </p>
+            {/* add red color to failed request */}
+  
           </CardContent>
         </Card>
       </div>

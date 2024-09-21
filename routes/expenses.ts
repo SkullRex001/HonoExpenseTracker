@@ -1,65 +1,79 @@
 import { Hono } from "hono";
 import { zValidator } from '@hono/zod-validator';
-import { createPostSchema, expenseSchema } from "../validationTypes";
-import type { Expense } from "../validationTypes";
-
-
-
-
+import { createPostSchema} from "../validationTypes";
+import { getUser } from "../kinde";
+import { db } from "../db";
+import { expenses as expensesTable } from "../db/schema/expenses";
+import { and, desc, eq, sum } from "drizzle-orm";
+import { insertExpenseSchema } from "../db/schema/expenses";
 
 export const expensesRoute = new Hono();
 
-const fakeData: Expense[] = [
-    {
-        "id": 1,
-        "title": "Office Supplies",
-        "amount": 150
-    },
-    {
-        "id": 2,
-        "title": "Client Lunch",
-        "amount": 75
-    },
-    {
-        "id": 3,
-        "title": "Software Subscription",
-        "amount": 300
-    },
-    {
-        "id": 4,
-        "title": "Travel Expenses",
-        "amount": 1200
-    },
-    {
-        "id": 5,
-        "title": "Conference Fees",
-        "amount": 500
-    }
-]
+
+const route = expensesRoute.get('/', getUser, async (c) => {
+    const user = c.var.user //is this sotored in local variable , if yes , i should not use it to get the user , otherwise this local variable will change as the new user login
+    // I think I should req the cookie and make database call from it
+
+    const expense = await db.select().from(expensesTable).where(eq(expensesTable.userId, user.id)).orderBy(desc(expensesTable.createdAt))
+    //i think i will add pagination here with .limit
+
+    console.log(expense)
 
 
-const route = expensesRoute.get('/', (c) => {
-    return c.json({
-        fakeData
-    })
-}).post('/', zValidator("json", createPostSchema), async (c) => {
+    return c.json({ expense })
+}).post('/', getUser, zValidator("json", createPostSchema), async (c) => {
+    const user = c.var.user
 
-    const data = await c.req.valid("json");
-    fakeData.push({ ...data, id: fakeData.length + 1 })
-    return c.json(data)
+    const expense = await c.req.valid("json");
+    const finalExpense = {...expense ,  userId: user.id}
+  
+    const validatedExpense = insertExpenseSchema.parse(finalExpense)
 
-}).get("/:id{[0-9]+}", (c) => {
+    const result = await db.insert(expensesTable).values(validatedExpense).returning().then((res)=> res[0])
+
+    console.log(result)
+    c.status(201)
+    return c.json(result)
+
+}).get("/:id{[0-9]+}", getUser, async (c) => {
+
+    //route not used in frontend
     const id = Number.parseInt(c.req.param("id"))
-    const expense = fakeData.find((expense) => expense.id === id)
+    const user = c.var.user;
+
+    const expense = await db.select().from(expensesTable).where(and(eq(expensesTable.userId, user.id), eq(expensesTable.id, id))).then(res => res[0])
 
     if (!expense) {
         return c.notFound()
     }
+
     return c.json({ expense })
 
-}).get("/total-spent", (c) => {
-    const total = fakeData.reduce((acc, expense) => acc + expense.amount, 0)
-    return c.json({ total })
+
+
+}).get("/total-spent", getUser, async (c) => {
+    const user = c.var.user;
+    const total = await db.select({ total: sum(expensesTable.amount) }).from(expensesTable).where(eq(expensesTable.userId, user.id)).then(res => res[0])
+    return c.json(total)
+}).delete("/:id{[0-9]+}", getUser, async (c) => {
+
+    
+    const id = Number.parseInt(c.req.param("id"))
+    const user = c.var.user;
+
+    const expense = await db.delete(expensesTable).where(and(eq(expensesTable.userId, user.id), eq(expensesTable.id, id))).returning().then(res => res[0])
+     console.log("Deleted Expense:-")
+    console.log(expense)
+
+    if (!expense) {
+        throw new Error("Expense not found!")
+    
+    }
+
+    return c.json({ expense })
+
+
+
 });
 
 export type AppType = typeof route
